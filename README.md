@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/icon.svg" alt="Pi Web logo" width="96" />
+<img src="public/logo.svg" alt="Pi Web logo" width="96" />
 
 # Pi Web
 
@@ -85,7 +85,7 @@ Syntax-highlighted preview for 30+ languages, with line numbers and a tab bar.
 
 ---
 
-## ✨✨✨ Features
+## ✨ Features
 
 ### Core
 - **Multi-provider support** — Ollama (local), Groq, OpenRouter, xAI, Anthropic, or any OpenAI-compatible endpoint
@@ -146,108 +146,133 @@ Starts the Next.js dev server on <http://localhost:30141> with hot reload.
 
 ---
 
-## ⚙️ Configuration
+## 🌐 Auto-open Browser (optional)
 
-### Model providers
+By default, `pi-web` starts a local server but doesn't open the browser — you have to manually visit <http://localhost:30141>. If you want `pi-web` to launch the browser automatically (e.g. for `pi-web` used inside WSL2 or a headless environment), add a shell wrapper that polls the server and opens the URL when ready.
 
-Configure providers in `~/.pi/agent/models.json`:
+### Setup (WSL2 / Linux)
 
-```json
-{
-  "providers": {
-    "ollama": {
-      "baseUrl": "http://localhost:11434/v1",
-      "api": "openai-completions",
-      "apiKey": "ollama",
-      "compat": {
-        "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false
-      },
-      "models": [
-        {
-          "id": "qwen2.5-coder:7b",
-          "name": "Qwen2.5 Coder 7B (Local)",
-          "contextWindow": 32768,
-          "maxTokens": 8192
-        }
-      ]
-    },
-    "groq": {
-      "baseUrl": "https://api.groq.com/openai/v1",
-      "api": "openai-completions",
-      "apiKey": "$GROQ_API_KEY",
-      "compat": {
-        "supportsDeveloperRole": true,
-        "supportsReasoningEffort": true
-      },
-      "models": [
-        {
-          "id": "openai/gpt-oss-120b",
-          "name": "GPT-OSS 120B (Groq)",
-          "contextWindow": 131072,
-          "maxTokens": 65536
-        }
-      ]
-    }
-  }
-}
-```
-
-Set the default model in `~/.pi/agent/settings.json`:
-
-```json
-{
-  "defaultProvider": "groq",
-  "defaultModel": "openai/gpt-oss-120b"
-}
-```
-
-Export API keys in `~/.bashrc`:
+Append this to `~/.bashrc`:
 
 ```bash
-export GROQ_API_KEY="gsk_..."
-export OPENROUTER_API_KEY="sk-or-..."
-```
+# ── pi-web wrapper: start server and open the browser ──
+pi-web() {
+  local pi_web_bin
+  pi_web_bin=$(type -P pi-web)
+  if [ -z "$pi_web_bin" ]; then
+    echo "Error: pi-web binary not found in PATH" >&2
+    return 1
+  fi
 
-### Custom port
+  # Read port from package.json (fallback: 30141)
+  local port
+  port=$(grep -oP '"dev":\s*"next dev -p \K\d+' ~/pi-web/package.json 2>/dev/null | head -1)
+  port="${port:-30141}"
+  local url="http://localhost:${port}"
 
-The default port is **30141**. Change it in `package.json`:
+  echo "[pi-web] Starting server on ${url}"
+  "$pi_web_bin" "$@" &
+  local pid=$!
 
-```json
-{
-  "scripts": {
-    "dev": "next dev -p 30141",
-    "start": "next start -p 30141"
-  }
+  # Wait until the server responds (max 30s)
+  local waited=0
+  while [ $waited -lt 60 ]; do
+    if ! kill -0 $pid 2>/dev/null; then
+      wait $pid
+      return $?
+    fi
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" "$url" 2>/dev/null)
+    case "$code" in
+      200|301|302|404) break ;;
+    esac
+    sleep 0.5
+    waited=$((waited + 1))
+  done
+
+  # Open in the Windows default browser (WSL2)
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command "Start-Process '${url}'" >/dev/null 2>&1 &
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "${url}" >/dev/null 2>&1 &
+  elif command -v open >/dev/null 2>&1; then
+    open "${url}" >/dev/null 2>&1 &
+  else
+    echo "[pi-web] Could not detect a browser opener. Open manually: ${url}"
+  fi
+
+  echo "[pi-web] Browser opening at ${url}  (Ctrl+C to stop)"
+  wait $pid
 }
 ```
+
+Reload your shell:
+
+```bash
+source ~/.bashrc
+```
+
+### Usage
+
+Just run:
+
+```bash
+pi-web
+```
+
+The wrapper will:
+1. Start the server in the background.
+2. Poll `http://localhost:30141` until it returns a response.
+3. Open the default browser (Windows browser from WSL2, `xdg-open` on Linux, `open` on macOS).
+4. Keep the server in the foreground so `Ctrl+C` stops it.
+
+**Note:** the wrapper **overrides** the original `pi-web` command. If you ever need the original behavior without browser auto-open, use `command pi-web` to bypass the function.
 
 ---
 
+```
+
 ## ⌨️ Keyboard Shortcuts
+
+Pi Web runs in the browser, so it uses two layers of shortcuts: **app-specific** ones handled by the UI, and **native browser** ones handled by Chrome / Firefox / Edge.
 
 ### Chat input
 
 | Key | Action |
 | :--- | :--- |
 | `Enter` | Send message |
-| `Shift + Enter` / `Ctrl + J` | New line |
-| `Ctrl + A` | Move to line start |
-| `Ctrl + E` | Move to line end |
-| `Ctrl + W` | Delete word backward |
-| `Ctrl + U` | Delete to line start |
-| `Ctrl + K` | Delete to line end |
-| `Ctrl + Y` | Paste last deleted text |
-| `/` | Slash commands |
-| `@` | Reference files |
+| `Shift + Enter` | Insert a new line |
+| `/` | Open slash-command menu |
+| `@` | Open file-reference autocomplete |
+| `Escape` | Close the autocomplete menu or cancel streaming |
+| `↑` / `↓` | Navigate autocomplete suggestions (when menu is open) |
+
+Standard text-editing keys use the browser's native behavior:
+
+| Key | Action |
+| :--- | :--- |
+| `Ctrl + C` / `Ctrl + V` / `Ctrl + X` | Copy / paste / cut |
+| `Ctrl + A` | Select all text in the textarea |
+| `Ctrl + Z` | Undo |
+| `Ctrl + Y` or `Ctrl + Shift + Z` | Redo |
+| `Ctrl + ←` / `Ctrl + →` | Move cursor by word |
+
+> ⚠️ **Do not use `Ctrl + W`** while focused in the textarea — browsers bind it to "close tab" and you will lose the page. Use `Ctrl + Backspace` instead to delete a word.
 
 ### Session sidebar
 
 | Key | Action |
 | :--- | :--- |
-| `Ctrl + 1..9` | Switch to workspace N |
-| `Ctrl + N` | New session |
-| Click logo | Toggle π digit display |
+| `Ctrl + 1` … `Ctrl + 9` | Switch to workspace N (when at least one workspace is defined) |
+| Click the π logo | Toggle the π digit display next to the logo |
+
+### Global browser shortcuts (outside the app)
+
+| Key | Action |
+| :--- | :--- |
+| `Ctrl + Shift + R` | Hard refresh — needed after `npm run build && npm install -g .` |
+| `Ctrl + 0` | Reset zoom to 100% |
+| `F12` | Open DevTools (useful for troubleshooting) |
 
 ---
 
