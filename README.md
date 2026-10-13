@@ -85,7 +85,7 @@ Syntax-highlighted preview for 30+ languages, with line numbers and a tab bar.
 
 ---
 
-## ✨ Features
+## ✨✨✨ Features
 
 ### Core
 - **Multi-provider support** — Ollama (local), Groq, OpenRouter, xAI, Anthropic, or any OpenAI-compatible endpoint
