@@ -30,7 +30,8 @@ This is a **personal fork** of [`agegr/pi-web`](https://github.com/agegr/pi-web)
 | 🌐 **English UI** | Complete translation from the original Chinese interface — every label, error message, and prompt |
 | 🎨 **Aqua theme** | Cool blue-gray surface with a teal accent, in both light and dark variants |
 | ☑️ **Bulk session management** | Select multiple sessions and delete or export them as a ZIP archive in one go |
-| 🗂️ **Workspaces panel** | Group projects into named workspaces with drag-to-reorder and `Ctrl+1..9` shortcuts |
+| 🗂️ **Workspaces** | Run multiple projects side-by-side, switch with `Ctrl+1..9`, jump back to any context in one keystroke |
+| 🖱️ **Drag-to-reorder + naming** | Rename, reorder, delete workspaces from the UI without editing config files |
 | 🖼️ **New logo** | Teal-gradient π mark matching the new theme |
 | 🧹 **Cleaner repo** | Removed Chinese-only docs, unused lockfiles, and legacy files |
 
@@ -57,6 +58,12 @@ Markdown rendering, syntax-highlighted code blocks, and per-message token stats.
 Select multiple sessions to delete or export them as a single ZIP archive.
 
 ![Select mode](docs/screenshots/select-mode.png)
+
+### Workspaces
+
+Run multiple projects side-by-side — each workspace keeps its own session list, file tree, and git worktree state. Switch with `Ctrl+1` through `Ctrl+9`.
+
+![Workspaces](docs/screenshots/workspaces.png)
 
 ### Light and dark mode
 
@@ -103,6 +110,130 @@ Syntax-highlighted preview for 30+ languages, with line numbers and a tab bar.
 - **Bulk session management** — checkbox select mode with batch delete and ZIP export
 - **Workspaces panel** — group projects, reorder, and switch with `Ctrl+1..9`
 - **Auto-open browser** — optional wrapper script that launches the app in your default browser
+
+---
+
+## 🗂️ Workspaces
+
+Workspaces are this fork's biggest addition over the upstream project. They let you **run multiple projects in parallel** without ever opening a second browser tab — each workspace keeps its own sessions, file tree, cwd, and git worktree state.
+
+### Why this matters
+
+Upstream `pi-web` shows a single flat list of sessions. When you're juggling several projects — say `frontend`, `backend`, and `infra` — you end up scrolling past unrelated sessions to find the one you want, and the file explorer and git worktree switcher keep flipping between repos.
+
+Workspaces fix this by letting you **group sessions, files, and git context by project** and switch between them instantly.
+
+### Key concepts
+
+| Concept | Meaning |
+| :--- | :--- |
+| **Workspace** | A named group pointing to a project root directory |
+| **Active workspace** | The one currently shown in the sidebar; highlighted with an accent bar |
+| **Session count** | Small badge next to each workspace showing how many sessions it contains |
+| **Blocked switch** | If any agent is running, switching workspaces is temporarily blocked to prevent cross-project data leaks |
+
+### What each workspace isolates
+
+When you switch workspaces, these things change together:
+
+- **Session list** — only sessions belonging to that project root are shown
+- **File tree** — the file explorer re-roots to the workspace directory
+- **Effective cwd** — new sessions spawn in the workspace directory
+- **Worktree switcher** — git worktrees are scoped per project
+- **Workspace path input** — shows the workspace root instead of raw `~`
+
+### How to use
+
+**Create a workspace:**
+
+1. Click **"+ Add workspace"** at the top of the sidebar
+2. In the modal, choose:
+   - **Name** — a label to recognize it later (e.g. `Frontend`, `API`, `Infra`)
+   - **Path** — the project root directory (validate via OS picker or manual entry)
+   - Optional: an accent color and short description
+3. Save. The workspace appears at the top of the sidebar.
+
+**Switch between workspaces:**
+
+- **Click** a workspace in the list
+- Or press **`Ctrl+1`**, **`Ctrl+2`**, ... **`Ctrl+9`** to jump to the Nth workspace
+
+**Reorder:**
+
+- Drag and drop a workspace up or down — the order persists across reloads
+
+**Edit or delete:**
+
+- Hover a workspace, click the **⋯** menu
+- **Edit** opens the same modal with values pre-filled
+- **Delete** removes the workspace (does not delete the project or any sessions)
+
+**Blocking rule:**
+
+While any agent is running, switching workspaces is blocked and a toast appears: *"Wait for the running agent to finish (or cancel it) before switching workspaces."* This prevents in-flight tool calls from writing to the wrong project.
+
+### Example workflow
+
+Imagine you have three projects and one AI assistant. Without workspaces:
+
+```
+1. Open pi-web
+2. Scroll through 40 sessions to find the one from "frontend-app"
+3. File tree shows "backend" by accident — click around to fix it
+4. Start a new session — it spawns in the wrong repo
+5. Realize you were editing the wrong branch
+```
+
+With workspaces:
+
+```
+1. Open pi-web
+2. Press Ctrl+1 → instantly see "Frontend" workspace
+3. File tree is already rooted at the frontend repo
+4. Start a new session — it spawns in frontend/ with the right branch
+5. Press Ctrl+2 → switch to "Backend" without losing context
+```
+
+### Storage
+
+Workspaces are stored in `~/.pi/agent/workspaces.json`:
+
+```json
+{
+  "version": 1,
+  "activeWorkspaceId": "ws_abc123",
+  "workspaces": [
+    {
+      "id": "ws_abc123",
+      "name": "Frontend",
+      "path": "/home/user/code/frontend",
+      "color": "#0D9488",
+      "createdAt": "2026-01-12T10:30:00Z"
+    },
+    {
+      "id": "ws_def456",
+      "name": "Backend",
+      "path": "/home/user/code/backend",
+      "color": "#14B8A6"
+    }
+  ]
+}
+```
+
+The file is created automatically on first save. You can also edit it manually if you prefer — Pi Web reads it on startup.
+
+### Keyboard shortcuts
+
+| Key | Action |
+| :--- | :--- |
+| `Ctrl + 1` … `Ctrl + 9` | Jump to workspace 1 through 9 |
+| `Click ⋯ menu` | Open edit / delete actions for a workspace |
+| `Drag workspace` | Reorder within the list |
+
+Shortcuts are **disabled** while:
+- A modal is open
+- Focus is inside a text input or textarea
+- Any agent is currently running
 
 ---
 
@@ -230,7 +361,38 @@ The wrapper will:
 
 ---
 
+## ⚙️ Configuration
+
+Pi Web **does not manage models or providers itself** — it reads whatever `pi-coding-agent` already has configured on your machine. If you've been using the Pi CLI or desktop app, your settings are picked up automatically with no extra steps.
+
+| File | Purpose |
+| :--- | :--- |
+| `~/.pi/agent/models.json` | Provider definitions and model registry |
+| `~/.pi/agent/settings.json` | Default provider, default model, and other runtime preferences |
+
+Pi Web works with **any configuration `pi-coding-agent` accepts**:
+
+- **Local runtimes** — Ollama, LM Studio, llama.cpp, vLLM, or any OpenAI-compatible endpoint
+- **Cloud providers** — Groq, OpenRouter, Anthropic, xAI, Gemini, Mistral, Together, Fireworks, or any OpenAI-compatible API
+- **Custom extensions** — plugins that register providers programmatically at runtime
+- **Pre-existing setups** — if you already have `~/.pi/agent/models.json`, it just works
+
+For the full reference (structure, `compat` flags, troubleshooting), see the [`pi-coding-agent` documentation](https://github.com/earendil-works/pi-coding-agent).
+
+### Custom port
+
+The default port is **30141**. Change it in `package.json`:
+
+```json
+{
+  "scripts": {
+    "dev": "next dev -p 30141",
+    "start": "next start -p 30141"
+  }
+}
 ```
+
+---
 
 ## ⌨️ Keyboard Shortcuts
 
